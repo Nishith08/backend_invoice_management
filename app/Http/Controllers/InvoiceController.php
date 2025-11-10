@@ -15,9 +15,10 @@ class InvoiceController extends Controller
     {
         $user = Auth::user();
         $role = $user->role;
+        $department = $user->department;
 
         if ($role === 'admin') {
-            $invoices = Invoice::orderByDesc('created_at')->get();
+            $invoices = Invoice::where('department', $department)->orderByDesc('created_at')->get();
         } else {
             $invoices = Invoice::where('current_role', $role)->orderByDesc('created_at')->get();
         }
@@ -36,6 +37,9 @@ class InvoiceController extends Controller
         // Validate request
         $request->validate([
             'title' => 'required|string',
+            'inv_no' => 'required|string',
+            'inv_amt' => 'required|string',
+            'inv_type' => 'required|string',
             'comment' => 'nullable|string',
             'document' => 'required|file|mimes:pdf,jpg,jpeg,png',
         ]);
@@ -43,15 +47,20 @@ class InvoiceController extends Controller
          // Store uploaded file
         // $path = $request->file('document')->store('invoices','public');
         // $path = $request->file('document')->store('', 'invoices');
-          $path = $request->file('document')->store('invoices', 'invoices');
-
+        $path = $request->file('document')->store('invoices', 'invoices');
+        $department = Auth::user()->department;
+        
         // Create invoice entry
         $invoice = Invoice::create([
             'title' => $request->title,
+            'inv_no' => $request->inv_no,
+            'inv_amt' => $request->inv_amt,
+            'inv_type' => $request->inv_type,
             'comment' => $request->comment,
             'document' => $path,
             'status' => 'pending',
             'current_role' => 'accounts_1st', // first approver role
+            'department' => $department,
         ]);
         InvoiceActionLog::create([
             'invoice_id' => $invoice->id,

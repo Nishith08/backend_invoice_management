@@ -7,14 +7,17 @@ use App\Models\InvoiceActionLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 
 class InvoiceActionController extends Controller
 {
     public function action(Request $request, $id)
     {
+
         $request->validate([
             'action' => 'required|in:approve,reject',
             'comment' => 'nullable|string',
+            'feedback' => 'nullable|string',
         ]);
         
         $invoice = Invoice::findOrFail($id);
@@ -22,14 +25,20 @@ class InvoiceActionController extends Controller
 
         $action = $request->action;
         $comment = $request->comment;
-
-        // Log this action
+    
+    // $query = $request->feedback;
+    $query = $request->input('feedback');
+    if($query==""){
+$query = "-";
+    }
+    //Log::info('InvoiceActionController action query: '.$query );
         InvoiceActionLog::create([
             'invoice_id' => $invoice->id,
             'user_id' => $user->id,
             'role' => $user->role,
             'action' => $action,
             'comment' => $comment,
+            'query' => $query,
             'seen' => false, // new log initially unseen
         ]);
 
@@ -78,10 +87,15 @@ class InvoiceActionController extends Controller
     public function latestLogsForRole(Request $request)
     {
         $role = $request->query('role');
+        $user = Auth::user();
         $query = InvoiceActionLog::with('invoice');
 
         if ($role === 'admin') {
-            // All logs for admin
+             if ($user && $user->department) {
+            $query->whereHas('invoice', function ($q) use ($user) {
+                $q->where('department', $user->department);
+            });
+        }
         } elseif ($role === 'accounts_1st') {
             $query->whereIn('role', ['admin', 'accounts_2nd']);
         } elseif ($role === 'accounts_2nd') {
@@ -95,6 +109,22 @@ class InvoiceActionController extends Controller
         }
 
         $logs = $query->orderByDesc('created_at')->take(10)->get();
+        // Map logs to include department for each invoice
+        $logs = $logs->map(function($log) {
+            return [
+                'id' => $log->id,
+                'invoice_id' => $log->invoice_id,
+                'user_id' => $log->user_id,
+                'role' => $log->role,
+                'action' => $log->action,
+                'comment' => $log->comment,
+                'seen' => $log->seen,
+                'created_at' => $log->created_at,
+                'invoice' => $log->invoice,
+                // Add department from invoice relation
+                'department' => $log->invoice ? $log->invoice->department : null,
+            ];
+        });
         $unseen = $query->where('seen', false)->exists();
 
         return response()->json([
