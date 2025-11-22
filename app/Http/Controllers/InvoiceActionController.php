@@ -13,25 +13,26 @@ class InvoiceActionController extends Controller
 {
     public function action(Request $request, $id)
     {
-
         $request->validate([
             'action' => 'required|in:approve,reject',
             'comment' => 'nullable|string',
             'feedback' => 'nullable|string',
+            'rejectedRole' => 'nullable|string',
         ]);
-        
+
         $invoice = Invoice::findOrFail($id);
         $user = Auth::user();
 
         $action = $request->action;
         $comment = $request->comment;
-    
-    // $query = $request->feedback;
-    $query = $request->input('feedback');
-    if($query==""){
-$query = "-";
-    }
-    //Log::info('InvoiceActionController action query: '.$query );
+        $rejectedRole = $request->rejectedRole;
+
+        $query = $request->input('feedback');
+        if ($query == "") {
+            $query = "-";
+        }
+
+        // Log entry
         InvoiceActionLog::create([
             'invoice_id' => $invoice->id,
             'user_id' => $user->id,
@@ -39,27 +40,38 @@ $query = "-";
             'action' => $action,
             'comment' => $comment,
             'query' => $query,
-            'seen' => false, // new log initially unseen
+            'seen' => false,
         ]);
 
         if ($action === 'reject') {
-            // Move back to previous role in workflow if exists
-            $previousRole = $this->getPreviousRole($user->role);
-            if ($previousRole) {
-                $invoice->current_role = $previousRole;
-                $invoice->status = 'pending';
-            } else {
-                // No previous role, mark rejected without changing current_role
-                $invoice->status = 'rejected';
+
+            // ----------------------------
+            // STORE rejectedRole AS ARRAY
+            // ----------------------------
+            $existing = $invoice->rejectedTo_role ?? [];
+
+            if (!is_array($existing)) {
+                $existing = json_decode($existing, true) ?? [];
             }
+
+            if ($rejectedRole && !in_array($rejectedRole, $existing)) {
+                $existing[] = $rejectedRole;
+            }
+
+            $invoice->rejectedTo_role = $existing;
+
+            // workflow logic
+            
+                $invoice->status = 'rejected';
+            
+
         } elseif ($action === 'approve') {
-            // Move to next role in workflow
+
             $nextRole = $this->getNextRole($user->role);
             if ($nextRole) {
                 $invoice->current_role = $nextRole;
                 $invoice->status = 'pending';
             } else {
-                // Final approval
                 $invoice->status = 'completed';
             }
         }
@@ -68,6 +80,7 @@ $query = "-";
 
         return response()->json(['message' => 'Action recorded successfully', 'invoice' => $invoice]);
     }
+
 
     private function getNextRole($currentRole)
     {
@@ -97,13 +110,13 @@ $query = "-";
             });
         }
         } elseif ($role === 'accounts_1st') {
-            $query->whereIn('role', ['admin', 'accounts_2nd']);
+            $query->whereIn('role', ['admin', 'accounts_2nd', 'accounts_3rd','final_accountant']);
         } elseif ($role === 'accounts_2nd') {
-            $query->whereIn('role', ['accounts_1st', 'accounts_3rd']);
+            $query->whereIn('role', ['admin','accounts_1st', 'accounts_3rd','final_accountant']);
         } elseif ($role === 'accounts_3rd') {
-            $query->where('role', 'accounts_2nd');
+            $query->whereIn('role', ['admin','accounts_1st', 'accounts_2nd', 'final_accountant']);
         } elseif ($role === 'final_accountant') {
-            $query->where('role', 'accounts_3rd');
+              $query->whereIn('role', ['admin','accounts_1st', 'accounts_2nd', 'accounts_3rd']);
         } else {
             return response()->json(['logs' => [], 'unseen' => false]);
         }
@@ -118,6 +131,7 @@ $query = "-";
                 'role' => $log->role,
                 'action' => $log->action,
                 'comment' => $log->comment,
+                'query' => $log->query,
                 'seen' => $log->seen,
                 'created_at' => $log->created_at,
                 'invoice' => $log->invoice,
