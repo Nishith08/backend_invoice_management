@@ -4,6 +4,7 @@ use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\InvoiceActionController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\NotificationController;
+use Illuminate\Support\Facades\Log;
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::middleware('auth:sanctum')->post('/logout', [AuthController::class, 'logout']);

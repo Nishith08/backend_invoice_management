@@ -7,6 +7,7 @@ use App\Models\InvoiceActionLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class InvoiceController extends Controller
 {
@@ -58,73 +59,142 @@ class InvoiceController extends Controller
     }
 
 
-
     public function store(Request $request)
     {
-        // Validate request
-        $request->validate([
-            'title' => 'required|string',
-            'inv_no' => 'required|string',
-            'correction' => 'required|string',
-            'inv_amt' => 'required|string',
-            'inv_type' => 'required|string',
-            'comment' => 'nullable|string',
-            'document' => 'required|array',
-            'document.*' => 'file|mimes:pdf,jpg,jpeg,png',
-        ]);
+        /*
+        |--------------------------------------------------------------------------
+        | VALIDATION
+        |--------------------------------------------------------------------------
+        */
+        $rules = [
+            'title'       => 'required|string',
+            'inv_no'      => 'required|string',
+            'correction'  => 'required|string',
+            'inv_amt'     => 'required|string',
+            'inv_type'    => 'required|string',
+            'comment'     => 'nullable|string',
 
-         // Store uploaded file
-        // $path = $request->file('document')->store('invoices','public');
-        // $path = $request->file('document')->store('', 'invoices');
+            'document'    => 'required|array',
+            'document.*'  => 'file|mimes:pdf,jpg,jpeg,png',
+        ];
+
+        // Extra validation only when creating new invoice
+        if ($request->correction == 0) {
+          
+            $rules['kyc_required'] = 'required|in:yes,no';
+
+            if ($request->kyc_required === 'yes') {
+                $rules['kyc_docs'] = 'required|array';
+                $rules['kyc_docs.*'] = 'file|mimes:pdf,jpg,jpeg,png';
+            }
+        }
+
+        $request->validate($rules);
+
+        /*
+        |--------------------------------------------------------------------------
+        | UPLOAD INVOICE DOCUMENTS
+        |--------------------------------------------------------------------------
+        */
         $paths = [];
-foreach ($request->file('document') as $file) {
-    $paths[] = $file->store('invoices', 'invoices');
-}
-        // $path = $request->file('document')->store('invoices', 'invoices');
+        foreach ($request->file('document') as $file) {
+            $paths[] = $file->store('invoices', 'invoices');
+        }
+
         $department = Auth::user()->department;
-        
-        
-    // NEW: If correction = 1 → get latest invoice for same inv_no
-    $prevInvoice = null;
-    if ($request->correction == 1) {
-        $prevInvoice = Invoice::where('inv_no', $request->inv_no)
-                              ->orderByDesc('created_at')
-                              ->first();
-    }
 
-    // NEW: Copy role + rejectedTo_role if correction
-    $newCurrentRole = $request->correction == 1
-        ? ($prevInvoice ? $prevInvoice->current_role : 'accounts_1st')
-        : 'accounts_1st';
+        /*
+        |--------------------------------------------------------------------------
+        | CORRECTION MODE: FETCH PREVIOUS INVOICE
+        |--------------------------------------------------------------------------
+        */
+        $prevInvoice = null;
+        if ($request->correction == 1) {
+            $prevInvoice = Invoice::where('inv_no', $request->inv_no)
+                ->orderByDesc('created_at')
+                ->first();
+        }
 
-    $newRejectedToRole = $request->correction == 1
-        ? ($prevInvoice ? $prevInvoice->rejectedTo_role : [])
-        : [];
+        /*
+        |--------------------------------------------------------------------------
+        | ROLE / REJECTED ARRAY LOGIC
+        |--------------------------------------------------------------------------
+        */
+        $newCurrentRole = ($request->correction == 1 && $prevInvoice)
+            ? $prevInvoice->current_role
+            : 'accounts_1st';
 
-        // Create invoice entry
+        $prevRejected = [];
+        if ($prevInvoice) {
+            $prevRejected = is_string($prevInvoice->rejectedTo_role)
+                ? json_decode($prevInvoice->rejectedTo_role, true)
+                : ($prevInvoice->rejectedTo_role ?? []);
+        }
+
+        // POP LAST ITEM ONLY IN CORRECTION
+        if ($request->correction == 1 && !empty($prevRejected)) {
+            array_pop($prevRejected);
+        }
+
+        $newRejectedToRole = $request->correction == 1 ? $prevRejected : [];
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | KYC DOCS UPLOAD (ONLY FOR NEW INVOICE)
+        |--------------------------------------------------------------------------
+        */
+        $kycPaths = [];
+
+        if ($request->correction == 0 && $request->kyc_required === 'yes') {
+            foreach ($request->file('kyc_docs') as $file) {
+                $kycPaths[] = $file->store('invoices/kyc', 'invoices');
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | CREATE NEW INVOICE ENTRY
+        |--------------------------------------------------------------------------
+        */
         $invoice = Invoice::create([
-            'title' => $request->title,
-            'inv_no' => $request->inv_no,
-            'inv_amt' => $request->inv_amt,
-            'inv_type' => $request->inv_type,
-            'comment' => $request->comment,
-            'document' => json_encode($paths),
-            'status' => ($request->correction) ? 'Corrected':'pending',
-            'current_role' => $newCurrentRole,
-            // NEW: store previous rejected roles (if any)
-            'rejectedTo_role' => $newRejectedToRole,
-            'department' => $department,
+            'title'           => $request->title,
+            'inv_no'          => $request->inv_no,
+            'inv_amt'         => $request->inv_amt,
+            'inv_type'        => $request->inv_type,
+            'comment'         => $request->comment,
+            'document'        => json_encode($paths),
+            'status'          => ($request->correction == 1) ? 'corrected' : 'pending',
+            'current_role'    => $newCurrentRole,
+            'rejectedTo_role' => json_encode($newRejectedToRole),
+            'department'      => $department,
+
+            // NEW FIELDS (only if not correction)
+            
+            'kyc_required'    => $request->correction == 0 ? $request->kyc_required : ($prevInvoice->kyc_required ?? 'no'),
+            'kyc_docs'        => $request->correction == 0 
+                                    ? json_encode($kycPaths)
+                                    : ($prevInvoice->kyc_docs ?? json_encode([])),
         ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | LOG ENTRY
+        |--------------------------------------------------------------------------
+        */
         InvoiceActionLog::create([
             'invoice_id' => $invoice->id,
-            'user_id' => Auth::id(),
-            'role' => 'admin',   // or Auth::user()->role if admin
-            'action' => 'created',
-            'comment' => 'Invoice created by admin',
-            'seen' => false,
+            'user_id'    => Auth::id(),
+            'role'       => 'admin',
+            'action'     => 'created',
+            'comment'    => $request->correction == 1
+                                ? 'Correction submitted for invoice'
+                                : 'Invoice created by admin',
+            'seen'       => false,
         ]);
-
 
         return response()->json($invoice, 201);
     }
+
+
 }

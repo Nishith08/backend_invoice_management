@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Invoice extends Model
 {
+   
     protected $fillable = [
         'title',
         'inv_no',
@@ -17,5 +18,8 @@ class Invoice extends Model
         'status',
         'current_role',
         'department',
+        'rejectedTo_role',
+        'kyc_required',
+        'kyc_docs',
     ];
 }
