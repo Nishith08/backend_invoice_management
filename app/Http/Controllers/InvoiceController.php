@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
 class InvoiceController extends Controller
-{
+{   
 
     public function index(Request $request) 
     {
@@ -19,7 +19,7 @@ class InvoiceController extends Controller
         $department = $user->department;
 
         // 1️⃣ Fetch ALL invoices
-        if ($role === 'admin') {
+        if ($role === 'admin') {    
             $allInvoices = Invoice::where('department', $department)
                                 ->orderByDesc('created_at')
                                 ->get();
@@ -42,10 +42,21 @@ class InvoiceController extends Controller
                     $rtRole = json_decode($rtRole, true);
                 }
 
-                // Exact matching behavior
-                return 
-                    $invoice->current_role === $role ||
-                    (is_array($rtRole) && in_array($role, $rtRole));
+                // Exact matching behavior: compare with current_role or the last element
+                $lastRtRole = null;
+                if (is_array($rtRole) && count($rtRole) > 0) {
+                    $lastRtRole = $rtRole[count($rtRole) - 1];
+                }
+
+                // If invoice is corrected and there are pending rejected roles,
+                // ignore `current_role` and match only against the last rejected role.
+                if ($invoice->status === 'corrected' && is_array($rtRole) && count($rtRole) > 0) {
+                    return $lastRtRole === $role;
+                }else{
+                    return $invoice->current_role === $role || ($lastRtRole !== null && $lastRtRole === $role);
+                }
+
+               
             })->values();
         }
 
@@ -79,7 +90,7 @@ class InvoiceController extends Controller
         ];
 
         // Extra validation only when creating new invoice
-        if ($request->correction == 0) {
+       
           
             $rules['kyc_required'] = 'required|in:yes,no';
 
@@ -87,7 +98,7 @@ class InvoiceController extends Controller
                 $rules['kyc_docs'] = 'required|array';
                 $rules['kyc_docs.*'] = 'file|mimes:pdf,jpg,jpeg,png';
             }
-        }
+        
 
         $request->validate($rules);
 
@@ -146,7 +157,7 @@ class InvoiceController extends Controller
         */
         $kycPaths = [];
 
-        if ($request->correction == 0 && $request->kyc_required === 'yes') {
+        if ($request->kyc_required === 'yes') {
             foreach ($request->file('kyc_docs') as $file) {
                 $kycPaths[] = $file->store('invoices/kyc', 'invoices');
             }
@@ -171,10 +182,8 @@ class InvoiceController extends Controller
 
             // NEW FIELDS (only if not correction)
             
-            'kyc_required'    => $request->correction == 0 ? $request->kyc_required : ($prevInvoice->kyc_required ?? 'no'),
-            'kyc_docs'        => $request->correction == 0 
-                                    ? json_encode($kycPaths)
-                                    : ($prevInvoice->kyc_docs ?? json_encode([])),
+            'kyc_required'    =>  $request->kyc_required ,
+            'kyc_docs'        => json_encode($kycPaths),
         ]);
 
         /*

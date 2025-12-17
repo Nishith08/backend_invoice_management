@@ -6,7 +6,40 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\NotificationController;
 use Illuminate\Support\Facades\Log;
 
+// use Illuminate\Support\Facades\Storage;
+
+// Route::get('/download/{path}', function ($path) {
+
+//     \Log::info("Downloading file: {$path}");
+
+//     // Normalize path
+//     $path = ltrim($path, '/');
+
+//     // Choose disk based on environment
+//     $disk = app()->environment('local') ? 'public' : 'invoices';
+
+//     if (!Storage::disk($disk)->exists($path)) {
+//         \Log::error("File not found on disk [$disk]: $path");
+//         abort(404, "File not found");
+//     }
+
+//     return Storage::disk($disk)->download($path);
+
+// })->where('path', '.*');
+
+        Route::get('/download/{path}', function ($path) {
+            $fullPath = storage_path('app/public/' . $path);
+Log::info("Download request for path: $fullPath");
+            if (!file_exists($fullPath)) {
+                abort(404, "File not found: $path");
+            }
+
+            return response()->download($fullPath);
+        })->where('path', '.*');
+
+
 Route::post('/login', [AuthController::class, 'login']);
+
 Route::middleware('auth:sanctum')->post('/logout', [AuthController::class, 'logout']);
 
 Route::middleware('auth:sanctum')->group(function () {

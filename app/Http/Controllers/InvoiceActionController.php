@@ -66,20 +66,18 @@ class InvoiceActionController extends Controller
             
 
         } elseif ($action === 'approve') {
-            if($invoice->status == 'corrected'){
-$prevRejected = [];
-
+            // decode rejectedTo_role into array (if present)
             $prevRejected = is_string($invoice->rejectedTo_role)
                 ? json_decode($invoice->rejectedTo_role, true)
                 : ($invoice->rejectedTo_role ?? []);
-         Log::info('hello:', $prevRejected);
-    // REMOVE LAST ITEM
-    
-       
-        array_pop($prevRejected);
-    $invoice->rejectedTo_role = $prevRejected;
-            }else{
 
+            // Only pop last rejected role when status is 'corrected' and there is at least one rejected role
+            if (!empty($prevRejected)) {
+                Log::info('InvoiceActionController: popping previous rejected role', $prevRejected);
+                array_pop($prevRejected);
+                $invoice->rejectedTo_role = $prevRejected;
+                 $invoice->status = 'corrected';
+            } else {
                 $nextRole = $this->getNextRole($user->role);
                 if ($nextRole) {
                     $invoice->current_role = $nextRole;
