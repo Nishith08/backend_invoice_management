@@ -55,7 +55,7 @@ return [
         ],
         // 'invoices' => [
         //     'driver' => 'local',
-        //     'root'   => base_path('../accounts/backend/storage'),
+        //     'root'   => base_path('../approvals/backend/storage'),
         //     'url'    => env('APP_URL').'/backend/storage',
         //     'visibility' => 'public',
         // ],

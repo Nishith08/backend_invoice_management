@@ -22,14 +22,30 @@ class UserRolesSeeder extends Seeder
             'accounts_3rd',
             'final_accountant',
         ];
+        $names = [
+            'marketing',
+            'acc_office',
+            'cfao',
+            'president',
+            'acc_office_2',
+        ];
+        $passwords = [
+            'l46ngk#f',  // for admin
+            'p3R$z8kL',  // for accounts_1st
+            'x9M!n4Vq',  // for accounts_2nd
+            'j7T@e1Wb',  // for accounts_3rd
+            'h2S#y5Nc',  // for final_accountant
+        ];
 
+        $i = 0;
         foreach ($roles as $role) {
             User::create([
                 'name' => ucfirst(str_replace('_', ' ', $role)),
-                'email' => $role . '@test.com',
-                'password' => Hash::make('password'), // Default password
+                'email' => $names[$i] . '@approvals.com',
+                'password' => Hash::make($passwords[$i]),
                 'role' => $role,
             ]);
+            $i++;
         }
     }
 }

@@ -60,9 +60,18 @@ class InvoiceController extends Controller
             })->values();
         }
 
-        // 4️⃣ Add document URL
+        // 4️⃣ Add document URL and `rej_yesno` (1 = has rejected roles, 2 = none)
         $latestInvoices->transform(function ($inv) {
             $inv->document_url = Storage::url($inv->document);
+
+            // $rej_yesno = $inv->status;
+            // if ($rej_yesno == 'rejected') {
+            //     $rej_yesno = 1;
+            // } else if ($rej_yesno == 'pending') {
+            //     $rej_yesno = 0;
+            // }
+            // $inv->rej_yesno = $rej_yesno;
+
             return $inv;
         });
 
@@ -159,7 +168,7 @@ class InvoiceController extends Controller
 
         if ($request->kyc_required === 'yes') {
             foreach ($request->file('kyc_docs') as $file) {
-                $kycPaths[] = $file->store('invoices/kyc', 'invoices');
+                $kycPaths[] = $file->store('kyc', 'invoices');
             }
         }
 

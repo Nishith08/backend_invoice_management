@@ -79,10 +79,11 @@ class InvoiceActionController extends Controller
                  $invoice->status = 'corrected';
             } else {
                 $nextRole = $this->getNextRole($user->role);
-                if ($nextRole) {
+                if ($nextRole!== 'final_accountant') {
                     $invoice->current_role = $nextRole;
                     $invoice->status = 'pending';
                 } else {
+                    $invoice->current_role = 'final_accountant';
                     $invoice->status = 'completed';
                 }
             }
@@ -241,8 +242,7 @@ public function invoiceLogHistory($invoice_id)
 
         // Store file if present and action is approve
         if ($request->hasFile('final_doc') && $action === 'approve') {
-            // $file = $request->file('final_doc');
-            // $path = $file->store('final_documents', 'public'); // Store on public disk
+           
             $path = $request->file('final_doc')->store('final_documents', 'invoices');
             $invoice->final_document =  $path;
         }

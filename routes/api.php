@@ -6,7 +6,8 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\NotificationController;
 use Illuminate\Support\Facades\Log;
 
-// use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Storage;
+
 
 // Route::get('/download/{path}', function ($path) {
 
@@ -16,7 +17,7 @@ use Illuminate\Support\Facades\Log;
 //     $path = ltrim($path, '/');
 
 //     // Choose disk based on environment
-//     $disk = app()->environment('local') ? 'public' : 'invoices';
+//     $disk ='invoices';
 
 //     if (!Storage::disk($disk)->exists($path)) {
 //         \Log::error("File not found on disk [$disk]: $path");
