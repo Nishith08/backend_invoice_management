@@ -100,6 +100,7 @@ class InvoiceController extends Controller
     public function store(Request $request)
     {
         Log::info('Invoice store called');
+
         /*
         |--------------------------------------------------------------------------
         | VALIDATION
@@ -112,72 +113,59 @@ class InvoiceController extends Controller
             'inv_amt'     => 'required|string',
             'inv_type'    => 'required|string',
             'comment'     => 'nullable|string',
-
             'document'    => 'required|array',
-           
+            'kyc_required'=> 'required|in:yes,no',
         ];
- Log::info('Invoice store called230');
-        // Extra validation only when creating new invoice
-       
-          
-            $rules['kyc_required'] = 'required|in:yes,no';
 
-            if ($request->kyc_required === 'yes') {
-                $rules['kyc_docs'] = 'required|array';
-                $rules['kyc_docs.*'] = 'file|mimes:pdf,jpg,jpeg,png';
-            }
-     
-    Log::info('Invoice store called231');
+        if ($request->kyc_required === 'yes') {
+            $rules['kyc_docs'] = 'required|array';
+        }
+
         $request->validate($rules);
-    Log::info('Invoice store called233');
+
+        Log::info('Validation passed');
+
         /*
         |--------------------------------------------------------------------------
-        | UPLOAD INVOICE DOCUMENTS
+        | UPLOAD INVOICE DOCUMENTS (Existing + New)
         |--------------------------------------------------------------------------
         */
-      
-
-        // $paths = [];
-        // foreach ($request->file('document') as $file) {
-        //     // $paths[] = $file->store('invoices', 'invoices');
-            
-        //     $path = $file->store('invoices', 'invoices');
-        //     Log::info('Incoming documents:', [$path]);
-        //     $paths[] = $path;
-        // }
-
         $paths = [];
 
-        $documents = $request->input('document',[]); // mixed: strings + files
+        $documents = $request->input('document', []);
+
         if (empty($documents)) {
-    $documents = array_keys($request->file('document') ?? []);
-}
- Log::info('Invoice store called23');
+            $documents = array_keys($request->file('document') ?? []);
+        }
+
         foreach ($documents as $key => $item) {
-// Log::info('Incoming documents:', $item);
-            // CASE 1: Existing file path (string)
+
+            // Existing file path
             if (is_string($item)) {
                 $paths[] = $item;
             }
 
-            // CASE 2: New uploaded file
+            // New uploaded file
             if ($request->hasFile("document.$key")) {
                 $file = $request->file("document.$key");
-                $path = $file->store('invoices', 'invoices');
-                 Log::info('Incoming documents:', [$path]);
-                $paths[] = $path;
 
+                if (!in_array($file->getClientOriginalExtension(), ['pdf','jpg','jpeg','png'])) {
+                    return response()->json(['error' => 'Invalid document file type'], 422);
+                }
+
+                $path = $file->store('invoices', 'invoices');
+                Log::info('Invoice document stored:', [$path]);
+                $paths[] = $path;
             }
         }
-
-
-        $department = Auth::user()->department;
 
         /*
         |--------------------------------------------------------------------------
         | CORRECTION MODE: FETCH PREVIOUS INVOICE
         |--------------------------------------------------------------------------
         */
+        $department = Auth::user()->department;
+
         $prevInvoice = null;
         if ($request->correction == 1) {
             $prevInvoice = Invoice::where('inv_no', $request->inv_no)
@@ -201,24 +189,46 @@ class InvoiceController extends Controller
                 : ($prevInvoice->rejectedTo_role ?? []);
         }
 
-        // POP LAST ITEM ONLY IN CORRECTION
         if ($request->correction == 1 && !empty($prevRejected)) {
             array_pop($prevRejected);
         }
 
         $newRejectedToRole = $request->correction == 1 ? $prevRejected : [];
 
-
         /*
         |--------------------------------------------------------------------------
-        | KYC DOCS UPLOAD (ONLY FOR NEW INVOICE)
+        | UPLOAD KYC DOCUMENTS (Existing + New)
         |--------------------------------------------------------------------------
         */
         $kycPaths = [];
 
         if ($request->kyc_required === 'yes') {
-            foreach ($request->file('kyc_docs') as $file) {
-                $kycPaths[] = $file->store('kyc', 'invoices');
+
+            $kycDocs = $request->input('kyc_docs', []);
+
+            if (empty($kycDocs)) {
+                $kycDocs = array_keys($request->file('kyc_docs') ?? []);
+            }
+
+            foreach ($kycDocs as $key => $item) {
+
+                // Existing file path
+                if (is_string($item)) {
+                    $kycPaths[] = $item;
+                }
+
+                // New uploaded file
+                if ($request->hasFile("kyc_docs.$key")) {
+                    $file = $request->file("kyc_docs.$key");
+
+                    if (!in_array($file->getClientOriginalExtension(), ['pdf','jpg','jpeg','png','jfif'])) {
+                        return response()->json(['error' => 'Invalid KYC file type'], 422);
+                    }
+
+                    $path = $file->store('kyc', 'invoices');
+                    Log::info('KYC document stored:', [$path]);
+                    $kycPaths[] = $path;
+                }
             }
         }
 
@@ -238,10 +248,7 @@ class InvoiceController extends Controller
             'current_role'    => $newCurrentRole,
             'rejectedTo_role' => json_encode($newRejectedToRole),
             'department'      => $department,
-
-            // NEW FIELDS (only if not correction)
-            
-            'kyc_required'    =>  $request->kyc_required ,
+            'kyc_required'    => $request->kyc_required,
             'kyc_docs'        => json_encode($kycPaths),
         ]);
 
@@ -263,6 +270,7 @@ class InvoiceController extends Controller
 
         return response()->json($invoice, 201);
     }
+
 
 
 }
