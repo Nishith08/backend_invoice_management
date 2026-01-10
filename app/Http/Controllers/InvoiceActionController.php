@@ -18,6 +18,7 @@ class InvoiceActionController extends Controller
             'comment' => 'nullable|string',
             'feedback' => 'nullable|string',
             'rejectedRole' => 'nullable|string',
+            'poRequired' => 'nullable|string',
         ]);
 
         $invoice = Invoice::findOrFail($id);
@@ -26,7 +27,8 @@ class InvoiceActionController extends Controller
         $action = $request->action;
         $comment = $request->comment;
         $rejectedRole = $request->rejectedRole;
-
+        $poRequired = $request->poRequired;
+        //Log::info('poRequired value', ['poRequired' => $poRequired]);
         $query = $request->input('feedback');
         if ($query == "") {
             $query = "-";
@@ -42,9 +44,14 @@ class InvoiceActionController extends Controller
             'query' => $query,
             'seen' => false,
         ]);
-
-        if ($action === 'reject') {
-
+        $crole = $invoice->current_role;
+        //Log::info('poRequired value', ['crole' => $crole]);
+        if($action === 'reject') {
+            
+            if($crole == "purchase_office"){
+                $rejectedRole = "accounts_1st";
+                
+            }
             // ----------------------------
             // STORE rejectedRole AS ARRAY
             // ----------------------------
@@ -65,22 +72,40 @@ class InvoiceActionController extends Controller
                 $invoice->status = 'rejected';
             
 
-        } elseif ($action === 'approve') {
+        }elseif($action === 'approve'){
             // decode rejectedTo_role into array (if present)
             $prevRejected = is_string($invoice->rejectedTo_role)
                 ? json_decode($invoice->rejectedTo_role, true)
                 : ($invoice->rejectedTo_role ?? []);
-
+        
+           
             // Only pop last rejected role when status is 'corrected' and there is at least one rejected role
             if (!empty($prevRejected)) {
                 Log::info('InvoiceActionController: popping previous rejected role', $prevRejected);
                 array_pop($prevRejected);
-                $invoice->rejectedTo_role = $prevRejected;
+                 Log::info('after pop', $prevRejected);
                  $invoice->status = 'corrected';
+                 $invoice->rejectedTo_role = $prevRejected;
+                // $invoice_id = $invoice->id;
+                // $purchaseinvolved = '';
+                // if($prevRejected == []){
+                // $invoice->status = 'corrected';
+                // }else{
+                //  $invoice->status = 'pending';
+                //  $invoice->current_role = "accounts_2nd"; 
+                // }
             } else {
-                $nextRole = $this->getNextRole($user->role);
+                if($crole == "accounts_1st" && $poRequired == "yes"){
+                    $nextRole = "purchase_office";
+                }else if($crole == "purchase_office"){
+                    $nextRole = "accounts_1st";
+                }else{
+                    $nextRole = $this->getNextRole($user->role);
+                }
                 if ($nextRole!== 'final_accountant') {
-                    $invoice->current_role = $nextRole;
+                Log::info('after final', ['nrole' => $nextRole]);
+                    
+                    $invoice->current_role = $nextRole; 
                     $invoice->status = 'pending';
                 } else {
                     $invoice->current_role = 'final_accountant';
@@ -222,7 +247,7 @@ public function invoiceLogHistory($invoice_id)
         'inv_no' => $invNo,
         'invoices' => $invoicesWithLogs
     ]);
-}
+}  
 
 
     public function finalUpload(Request $request, $id)

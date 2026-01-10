@@ -21,6 +21,7 @@ class UserRolesSeeder extends Seeder
             'accounts_2nd',
             'accounts_3rd',
             'final_accountant',
+            'purchase_office',
         ];
         $names = [
             'marketing',
@@ -28,6 +29,7 @@ class UserRolesSeeder extends Seeder
             'cfao',
             'president',
             'acc_office_2',
+            'purchase_office',
         ];
         $passwords = [
             'l46ngk#f',  // for admin
@@ -35,6 +37,7 @@ class UserRolesSeeder extends Seeder
             'x9M!n4Vq',  // for accounts_2nd
             'j7T@e1Wb',  // for accounts_3rd
             'h2S#y5Nc',  // for final_accountant
+            't2e$X8kL',  // for purchase office
         ];
 
         $i = 0;

@@ -14,6 +14,7 @@ class InvoiceController extends Controller
 
     public function index(Request $request) 
     {
+        
         $user = Auth::user();
         $role = $user->role;
         $department = $user->department;
@@ -26,7 +27,7 @@ class InvoiceController extends Controller
         } else {
             $allInvoices = Invoice::orderByDesc('created_at')->get();
         }
-
+            //Log::info('poRequired value'.$allInvoices);
         // 2️⃣ Group by inv_no → keep the newest invoice
         $latestInvoices = $allInvoices->groupBy('inv_no')->map(function ($group) {
             return $group->first();
@@ -61,8 +62,25 @@ class InvoiceController extends Controller
         }
 
         // 4️⃣ Add document URL and `rej_yesno` (1 = has rejected roles, 2 = none)
-        $latestInvoices->transform(function ($inv) {
+        $latestInvoices->transform(function ($inv, $index) {
             $inv->document_url = Storage::url($inv->document);
+            $curr_role = $inv->current_role;
+
+            // Check if there's an approve action by purchase_office for this invoice
+            $hasApprove = InvoiceActionLog::where('invoice_id', $inv->id)
+                ->where('action', 'approve')
+                ->where('role', 'purchase_office')
+                ->exists();
+
+            if ($curr_role == 'accounts_1st' && $hasApprove) {
+                $inv->dyn = 0;
+            } else if($curr_role == 'accounts_1st'){
+                $inv->dyn = 2;
+            } else if($curr_role == 'purchase_office'){
+                $inv->dyn = 1;   
+            } else if($curr_role !== 'purchase_office' && $curr_role !== 'accounts_1st'){
+                $inv->dyn = 0;
+            }
 
             // $rej_yesno = $inv->status;
             // if ($rej_yesno == 'rejected') {
@@ -81,6 +99,7 @@ class InvoiceController extends Controller
 
     public function store(Request $request)
     {
+        Log::info('Invoice store called');
         /*
         |--------------------------------------------------------------------------
         | VALIDATION
@@ -95,9 +114,9 @@ class InvoiceController extends Controller
             'comment'     => 'nullable|string',
 
             'document'    => 'required|array',
-            'document.*'  => 'file|mimes:pdf,jpg,jpeg,png',
+           
         ];
-
+ Log::info('Invoice store called230');
         // Extra validation only when creating new invoice
        
           
@@ -107,19 +126,50 @@ class InvoiceController extends Controller
                 $rules['kyc_docs'] = 'required|array';
                 $rules['kyc_docs.*'] = 'file|mimes:pdf,jpg,jpeg,png';
             }
-        
-
+     
+    Log::info('Invoice store called231');
         $request->validate($rules);
-
+    Log::info('Invoice store called233');
         /*
         |--------------------------------------------------------------------------
         | UPLOAD INVOICE DOCUMENTS
         |--------------------------------------------------------------------------
         */
+      
+
+        // $paths = [];
+        // foreach ($request->file('document') as $file) {
+        //     // $paths[] = $file->store('invoices', 'invoices');
+            
+        //     $path = $file->store('invoices', 'invoices');
+        //     Log::info('Incoming documents:', [$path]);
+        //     $paths[] = $path;
+        // }
+
         $paths = [];
-        foreach ($request->file('document') as $file) {
-            $paths[] = $file->store('invoices', 'invoices');
+
+        $documents = $request->input('document',[]); // mixed: strings + files
+        if (empty($documents)) {
+    $documents = array_keys($request->file('document') ?? []);
+}
+ Log::info('Invoice store called23');
+        foreach ($documents as $key => $item) {
+// Log::info('Incoming documents:', $item);
+            // CASE 1: Existing file path (string)
+            if (is_string($item)) {
+                $paths[] = $item;
+            }
+
+            // CASE 2: New uploaded file
+            if ($request->hasFile("document.$key")) {
+                $file = $request->file("document.$key");
+                $path = $file->store('invoices', 'invoices');
+                 Log::info('Incoming documents:', [$path]);
+                $paths[] = $path;
+
+            }
         }
+
 
         $department = Auth::user()->department;
 
@@ -207,7 +257,7 @@ class InvoiceController extends Controller
             'action'     => 'created',
             'comment'    => $request->correction == 1
                                 ? 'Correction submitted for invoice'
-                                : 'Invoice created by admin',
+                                : 'Invoice Generated',
             'seen'       => false,
         ]);
 

@@ -46,7 +46,7 @@ return [
             'throw' => false,
             'report' => false,
         ],
-          // 👇 New disk for web-accessible invoices
+        //  👇 New disk for web-accessible invoices
         'invoices' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
