@@ -14,59 +14,93 @@ class InvoiceController extends Controller
 
     public function index(Request $request) 
     {
-        
         $user = Auth::user();
         $role = $user->role;
         $department = $user->department;
+        $userId = $user->id;
 
         // 1️⃣ Fetch ALL invoices
-        if ($role === 'admin') {    
+        if ($role === 'admin') {
             $allInvoices = Invoice::where('department', $department)
-                                ->orderByDesc('created_at')
-                                ->get();
+                ->orderByDesc('created_at')
+                ->get();
         } else {
             $allInvoices = Invoice::orderByDesc('created_at')->get();
         }
-            //Log::info('poRequired value'.$allInvoices);
+
+        // 🔹 Count how many times each inv_no exists
+        $invNoCounts = $allInvoices->groupBy('inv_no')->map(function ($group) {
+            return $group->count();
+        });
+
         // 2️⃣ Group by inv_no → keep the newest invoice
         $latestInvoices = $allInvoices->groupBy('inv_no')->map(function ($group) {
             return $group->first();
         })->values();
 
-        // 3️⃣ Apply SAME FILTER logic as original query
-        if ($role !== 'admin') {
-            $latestInvoices = $latestInvoices->filter(function ($invoice) use ($role) {
+        // Filter invoices based on role hierarchy
+        $roleHierarchy = ['admin', 'accounts_1st', 'purchase_office', 'accounts_2nd', 'accounts_3rd', 'final_accountant'];
+        $loggedInRoleIndex = array_search($role, $roleHierarchy);
 
-                // Properly decode JSON
-                $rtRole = $invoice->rejectedTo_role;
-                if (is_string($rtRole)) {
-                    $rtRole = json_decode($rtRole, true);
-                }
-
-                // Exact matching behavior: compare with current_role or the last element
-                $lastRtRole = null;
-                if (is_array($rtRole) && count($rtRole) > 0) {
-                    $lastRtRole = $rtRole[count($rtRole) - 1];
-                }
-
-                // If invoice is corrected and there are pending rejected roles,
-                // ignore `current_role` and match only against the last rejected role.
-                if ($invoice->status === 'corrected' && is_array($rtRole) && count($rtRole) > 0) {
-                    return $lastRtRole === $role;
-                }else{
-                    return $invoice->current_role === $role || ($lastRtRole !== null && $lastRtRole === $role);
-                }
-
-               
+        if ($loggedInRoleIndex !== false) {
+            $latestInvoices = $latestInvoices->filter(function ($invoice) use ($loggedInRoleIndex, $roleHierarchy) {
+                $invoiceRoleIndex = array_search($invoice->current_role, $roleHierarchy);
+                return $invoiceRoleIndex !== false && $invoiceRoleIndex >= $loggedInRoleIndex;
             })->values();
         }
 
-        // 4️⃣ Add document URL and `rej_yesno` (1 = has rejected roles, 2 = none)
-        $latestInvoices->transform(function ($inv, $index) {
+        // 3️⃣ Mark entries with displayYesNo, inv_found & approvedYesNo
+        $latestInvoices = $latestInvoices->map(function ($invoice) use ($role, $invNoCounts, $userId) {
+
+            // ✅ Duplicate inv_no check
+            $invoice->inv_found = isset($invNoCounts[$invoice->inv_no]) 
+                && $invNoCounts[$invoice->inv_no] >= 2;
+
+            // ✅ Check if THIS USER has approved THIS invoice even once
+            $invoice->approvedYesNo = InvoiceActionLog::where('invoice_id', $invoice->id)
+                ->where('user_id', $userId)
+                ->where('action', 'approve')
+                ->exists();
+
+            if ($role === 'admin') {
+                $invoice->displayYesNo = true;
+                return $invoice;
+            }
+
+            $rtRole = $invoice->rejectedTo_role;
+            if (is_string($rtRole)) {
+                $rtRole = json_decode($rtRole, true);
+            } else if ($rtRole === null) {
+                $rtRole = [];
+            }
+
+            $lastRtRole = null;
+            if (is_array($rtRole) && count($rtRole) > 0) {
+                $lastRtRole = $rtRole[count($rtRole) - 1];
+            }
+
+            if ($invoice->status === 'corrected' && count($rtRole) > 0) {
+                $invoice->displayYesNo = ($lastRtRole === $role);
+            } else {
+                $invoice->displayYesNo = (
+                    $invoice->current_role === $role || 
+                    ($lastRtRole !== null && $lastRtRole === $role)
+                );
+            }
+
+            if ($invoice->current_role === $role && !empty($rtRole)) {
+                $invoice->displayYesNo = false;
+            }
+
+            return $invoice;
+        })->values();
+
+        // 4️⃣ Add document URL and `dyn` value
+        $latestInvoices->transform(function ($inv) {
+
             $inv->document_url = Storage::url($inv->document);
             $curr_role = $inv->current_role;
 
-            // Check if there's an approve action by purchase_office for this invoice
             $hasApprove = InvoiceActionLog::where('invoice_id', $inv->id)
                 ->where('action', 'approve')
                 ->where('role', 'purchase_office')
@@ -74,27 +108,94 @@ class InvoiceController extends Controller
 
             if ($curr_role == 'accounts_1st' && $hasApprove) {
                 $inv->dyn = 0;
-            } else if($curr_role == 'accounts_1st'){
+            } else if ($curr_role == 'accounts_1st') {
                 $inv->dyn = 2;
-            } else if($curr_role == 'purchase_office'){
-                $inv->dyn = 1;   
-            } else if($curr_role !== 'purchase_office' && $curr_role !== 'accounts_1st'){
+            } else if ($curr_role == 'purchase_office') {
+                $inv->dyn = 1;
+            } else {
                 $inv->dyn = 0;
             }
-
-            // $rej_yesno = $inv->status;
-            // if ($rej_yesno == 'rejected') {
-            //     $rej_yesno = 1;
-            // } else if ($rej_yesno == 'pending') {
-            //     $rej_yesno = 0;
-            // }
-            // $inv->rej_yesno = $rej_yesno;
 
             return $inv;
         });
 
-        return response()->json($latestInvoices);
+        // 5️⃣ Calculate 4 Counts for Dashboard
+        $pendingCount = 0;
+        $approvedCount = 0;
+        $rejectedCount = 0;
+        $completedCount = 0;
+
+        foreach ($latestInvoices as $invoice) {
+            // COMPLETED: Simple check for completed status
+            if ($invoice->status === 'completed') {
+                $completedCount++;
+            }
+
+            // REJECTED: Check if rejectedTo_role contains current user's role
+            $rtRole = $invoice->rejectedTo_role;
+            if (is_string($rtRole)) {
+                $rtRole = json_decode($rtRole, true);
+            }
+            if (!is_array($rtRole)) {
+                $rtRole = [];
+            }
+            
+            if (in_array($role, $rtRole)) {
+                $rejectedCount++;
+            }
+
+            // PENDING: Action is open for logged-in user
+            // - New invoice where current_role is user's role
+            // - Corrected invoice where last rejectedTo_role is user's role
+            $isPending = false;
+            
+            if ($invoice->status === 'pending' && $invoice->current_role === $role) {
+                $isPending = true;
+            } else if (!empty($rtRole)) {
+                $lastRtRole = end($rtRole);
+                $isPending = true;
+                // if ($lastRtRole === $role) {
+                
+                // }
+            }
+            
+            if ($isPending) {
+                $pendingCount++;
+            }
+
+            // APPROVED: User has taken action (created invoice or approved it)
+            $userApprovedInvoice = InvoiceActionLog::where('invoice_id', $invoice->id)
+                ->where('user_id', $userId)
+                ->whereIn('action', ['approve', 'create'])
+                ->exists();
+
+            // OR user is admin and created the invoice (all invoices for admin)
+            $isCreatedByUser = false;
+            if ($role === 'admin') {
+                // Check if this user created the invoice (created_by field would be needed, or check first log)
+                $firstLog = InvoiceActionLog::where('invoice_id', $invoice->id)
+                    ->where('user_id', $userId)
+                    ->first();
+                $isCreatedByUser = $firstLog !== null;
+            }
+
+            if ($userApprovedInvoice || $isCreatedByUser) {
+                $approvedCount++;
+            }
+        }
+
+        return response()->json([
+            'invoices' => $latestInvoices,
+            'counts' => [
+                'pending' => $pendingCount,
+                'approved' => $approvedCount,
+                'rejected' => $rejectedCount,
+                'completed' => $completedCount,
+            ]
+        ]);
     }
+
+
 
 
     public function store(Request $request)

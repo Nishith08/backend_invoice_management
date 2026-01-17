@@ -108,7 +108,7 @@ class InvoiceActionController extends Controller
                     $invoice->current_role = $nextRole; 
                     $invoice->status = 'pending';
                 } else {
-                    $invoice->current_role = 'final_accountant';
+                    //$invoice->current_role = 'final_accountant';
                     $invoice->status = 'completed';
                 }
             }
