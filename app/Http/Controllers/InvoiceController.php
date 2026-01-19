@@ -149,12 +149,12 @@ class InvoiceController extends Controller
             // - Corrected invoice where last rejectedTo_role is user's role
             $isPending = false;
             
-            if ($invoice->status === 'pending' && $invoice->current_role === $role) {
+            if (($invoice->status === 'pending' || $invoice->status === 'corrected' || $invoice->status === 'rejected') && $invoice->current_role === $role) {
                 $isPending = true;
-            } else if (!empty($rtRole)) {
+            } else if (!empty($rtRole) ) {
                 $lastRtRole = end($rtRole);
                 
-                if ($lastRtRole === $role) {
+                if ($lastRtRole === $role &&  $invoice->status !== 'rejected') {
                 $isPending = true;
                 }
             }
@@ -183,7 +183,7 @@ class InvoiceController extends Controller
                 $approvedCount++;
             }
         }
-
+        $approvedCount = $approvedCount - ($completedCount+$rejectedCount);
         return response()->json([
             'invoices' => $latestInvoices,
             'counts' => [
