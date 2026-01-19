@@ -153,10 +153,10 @@ class InvoiceController extends Controller
                 $isPending = true;
             } else if (!empty($rtRole)) {
                 $lastRtRole = end($rtRole);
-                $isPending = true;
-                // if ($lastRtRole === $role) {
                 
-                // }
+                if ($lastRtRole === $role) {
+                $isPending = true;
+                }
             }
             
             if ($isPending) {
