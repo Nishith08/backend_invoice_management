@@ -13,6 +13,7 @@ class InvoiceActionLog extends Model
         'action',
         'comment',
         'query',
+        'rejected_to',
     ];
     public function invoice() {
         return $this->belongsTo(Invoice::class);

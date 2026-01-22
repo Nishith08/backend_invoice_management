@@ -90,6 +90,7 @@ class InvoiceController extends Controller
 
             if ($invoice->current_role === $role && !empty($rtRole)) {
                 $invoice->displayYesNo = false;
+                $invoice->rjbyrole = true;
             }
 
             return $invoice;
@@ -120,6 +121,7 @@ class InvoiceController extends Controller
         });
 
         // 5️⃣ Calculate 4 Counts for Dashboard
+        $approvePendingCount = 0;
         $pendingCount = 0;
         $approvedCount = 0;
         $rejectedCount = 0;
@@ -139,28 +141,40 @@ class InvoiceController extends Controller
             if (!is_array($rtRole)) {
                 $rtRole = [];
             }
-            
-            if (in_array($role, $rtRole)) {
-                $rejectedCount++;
+            if (!empty($rtRole) && $invoice->current_role === $role){
+                 $rejectedCount++;
             }
+            // if (in_array($role, $rtRole)) {
+            //     $rejectedCount++;
+            // }
 
             // PENDING: Action is open for logged-in user
             // - New invoice where current_role is user's role
             // - Corrected invoice where last rejectedTo_role is user's role
             $isPending = false;
             
-            if (($invoice->status === 'pending' || $invoice->status === 'corrected' || $invoice->status === 'rejected') && $invoice->current_role === $role) {
+            if (($invoice->status === 'pending' || $invoice->status === 'corrected') && $invoice->current_role === $role) {
                 $isPending = true;
             } else if (!empty($rtRole) ) {
                 $lastRtRole = end($rtRole);
                 
-                if ($lastRtRole === $role &&  $invoice->status !== 'rejected') {
+                if ($lastRtRole === $role) {
                 $isPending = true;
                 }
             }
             
             if ($isPending) {
                 $pendingCount++;
+            }
+            $isapprovePending = false;
+            if(!empty($rtRole)){
+                $lastRtRole = end($rtRole);
+                 if ($lastRtRole === $role) {
+                $isapprovePending = true;
+                }
+            }
+            if ($isapprovePending) {
+                $approvePendingCount++;
             }
 
             // APPROVED: User has taken action (created invoice or approved it)
@@ -183,7 +197,16 @@ class InvoiceController extends Controller
                 $approvedCount++;
             }
         }
-        $approvedCount = $approvedCount - ($completedCount+$rejectedCount);
+
+        if($role === 'admin'){
+            $approvedCount = $approvedCount - ($completedCount + $pendingCount);
+        }else{
+            $approvedCount = $approvedCount - ($approvePendingCount+$completedCount);
+        }
+
+
+
+       // $approvedCount = $approvedCount - ($completedCount + $pendingCount);
         return response()->json([
             'invoices' => $latestInvoices,
             'counts' => [

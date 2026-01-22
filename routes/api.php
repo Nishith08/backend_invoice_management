@@ -8,7 +8,9 @@ use Illuminate\Support\Facades\Log;
 
 use Illuminate\Support\Facades\Storage;
 
-
+Route::get('/phpinfo', function () {
+    phpinfo();
+});
 // Route::get('/download/{path}', function ($path) {
 
 //     \Log::info("Downloading file: {$path}");

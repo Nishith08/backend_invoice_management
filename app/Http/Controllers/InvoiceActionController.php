@@ -33,7 +33,9 @@ class InvoiceActionController extends Controller
         if ($query == "") {
             $query = "-";
         }
-
+        if(!$rejectedRole){ 
+            $rejectedRole = '';
+        }
         // Log entry
         InvoiceActionLog::create([
             'invoice_id' => $invoice->id,        
@@ -43,6 +45,7 @@ class InvoiceActionController extends Controller
             'comment' => $comment,
             'query' => $query,
             'seen' => false,
+            'rejected_to' => $rejectedRole,
         ]);
         $crole = $invoice->current_role;
         //Log::info('poRequired value', ['crole' => $crole]);
