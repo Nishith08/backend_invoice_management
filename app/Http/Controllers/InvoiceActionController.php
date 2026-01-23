@@ -51,7 +51,7 @@ class InvoiceActionController extends Controller
         //Log::info('poRequired value', ['crole' => $crole]);
         if($action === 'reject') {
             
-            if($crole == "purchase_office"){
+            if($crole == "purchase_office" && $user->role != "accounts_1st"){
                 $rejectedRole = "accounts_1st";
                 
             }
@@ -84,9 +84,9 @@ class InvoiceActionController extends Controller
            
             // Only pop last rejected role when status is 'corrected' and there is at least one rejected role
             if (!empty($prevRejected)) {
-                Log::info('InvoiceActionController: popping previous rejected role', $prevRejected);
+                //Log::info('InvoiceActionController: popping previous rejected role', $prevRejected);
                 array_pop($prevRejected);
-                 Log::info('after pop', $prevRejected);
+                 //Log::info('after pop', $prevRejected);
                  $invoice->status = 'corrected';
                  $invoice->rejectedTo_role = $prevRejected;
                 // $invoice_id = $invoice->id;
@@ -106,7 +106,7 @@ class InvoiceActionController extends Controller
                     $nextRole = $this->getNextRole($user->role);
                 }
                 if ($nextRole!== 'final_accountant') {
-                Log::info('after final', ['nrole' => $nextRole]);
+                //Log::info('after final', ['nrole' => $nextRole]);
                     
                     $invoice->current_role = $nextRole; 
                     $invoice->status = 'pending';
@@ -219,38 +219,38 @@ class InvoiceActionController extends Controller
         $logs = InvoiceActionLog::orderByDesc('created_at')->get();
         return response()->json($logs);
     }
-public function invoiceLogHistory($invoice_id)
-{
-    // STEP 1 — Get selected invoice
-    $selectedInvoice = Invoice::findOrFail($invoice_id);
+    public function invoiceLogHistory($invoice_id)
+    {
+        // STEP 1 — Get selected invoice
+        $selectedInvoice = Invoice::findOrFail($invoice_id);
 
-    // STEP 2 — Get inv_no of selected invoice
-    $invNo = $selectedInvoice->inv_no;
+        // STEP 2 — Get inv_no of selected invoice
+        $invNo = $selectedInvoice->inv_no;
 
-    // STEP 3 — Fetch all invoices with same inv_no in DESC order (latest first)
-    $invoices = Invoice::where('inv_no', $invNo)
-        ->orderBy('id', 'desc')
-        ->get();
+        // STEP 3 — Fetch all invoices with same inv_no in DESC order (latest first)
+        $invoices = Invoice::where('inv_no', $invNo)
+            ->orderBy('id', 'desc')
+            ->get();
 
-    // STEP 4 — Fetch logs for these invoices
-    $invoiceIds = $invoices->pluck('id');
+        // STEP 4 — Fetch logs for these invoices
+        $invoiceIds = $invoices->pluck('id');
 
-    $allLogs = InvoiceActionLog::with('user')
-        ->whereIn('invoice_id', $invoiceIds)
-        ->orderBy('created_at', 'desc')
-        ->get();
+        $allLogs = InvoiceActionLog::with('user')
+            ->whereIn('invoice_id', $invoiceIds)
+            ->orderBy('created_at', 'desc')
+            ->get();
 
-    // STEP 5 — Attach logs to each invoice
-    $invoicesWithLogs = $invoices->map(function ($inv) use ($allLogs) {
-        $inv->logs = $allLogs->where('invoice_id', $inv->id)->values();
-        return $inv;
-    });
+        // STEP 5 — Attach logs to each invoice
+        $invoicesWithLogs = $invoices->map(function ($inv) use ($allLogs) {
+            $inv->logs = $allLogs->where('invoice_id', $inv->id)->values();
+            return $inv;
+        });
 
-    return response()->json([
-        'inv_no' => $invNo,
-        'invoices' => $invoicesWithLogs
-    ]);
-}  
+        return response()->json([
+            'inv_no' => $invNo,
+            'invoices' => $invoicesWithLogs
+        ]);
+    }  
 
 
     public function finalUpload(Request $request, $id)

@@ -223,7 +223,7 @@ class InvoiceController extends Controller
 
     public function store(Request $request)
     {
-        Log::info('Invoice store called');
+        //Log::info('Invoice store called');
 
         /*
         |--------------------------------------------------------------------------
@@ -247,7 +247,7 @@ class InvoiceController extends Controller
 
         $request->validate($rules);
 
-        Log::info('Validation passed');
+        //Log::info('Validation passed');
 
         /*
         |--------------------------------------------------------------------------
@@ -278,7 +278,7 @@ class InvoiceController extends Controller
                 }
 
                 $path = $file->store('invoices', 'invoices');
-                Log::info('Invoice document stored:', [$path]);
+                //Log::info('Invoice document stored:', [$path]);
                 $paths[] = $path;
             }
         }
@@ -350,7 +350,7 @@ class InvoiceController extends Controller
                     }
 
                     $path = $file->store('kyc', 'invoices');
-                    Log::info('KYC document stored:', [$path]);
+                    //Log::info('KYC document stored:', [$path]);
                     $kycPaths[] = $path;
                 }
             }

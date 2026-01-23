@@ -13,7 +13,7 @@ Route::get('/phpinfo', function () {
 });
 // Route::get('/download/{path}', function ($path) {
 
-//     \Log::info("Downloading file: {$path}");
+//     //Log::info("Downloading file: {$path}");
 
 //     // Normalize path
 //     $path = ltrim($path, '/');
@@ -32,7 +32,7 @@ Route::get('/phpinfo', function () {
 
         Route::get('/download/{path}', function ($path) {
             $fullPath = storage_path('app/public/' . $path);
-Log::info("Download request for path: $fullPath");
+//Log::info("Download request for path: $fullPath");
             if (!file_exists($fullPath)) {
                 abort(404, "File not found: $path");
             }
