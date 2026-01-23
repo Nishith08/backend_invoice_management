@@ -49,6 +49,34 @@ class InvoiceController extends Controller
             })->values();
         }
 
+        // Custom filter for purchase_office role
+        if ($role === 'purchase_office') {
+            $latestInvoices = $latestInvoices->filter(function ($invoice) {
+                // If current_role is purchase_office, always show
+                if ($invoice->current_role === 'purchase_office') {
+                    return true;
+                }
+                // Helper closure to recursively check previous invoices for purchase_office log
+                $hasPurchaseOfficeLog = function($inv) use (&$hasPurchaseOfficeLog) {
+                    // Check if InvoiceActionLog has purchase_office for this invoice
+                    $found = InvoiceActionLog::where('invoice_id', $inv->id)
+                        ->where('role', 'purchase_office')
+                        ->exists();
+                    if ($found) return true;
+                    // Find previous invoice with same inv_no and earlier created_at
+                    $prev = Invoice::where('inv_no', $inv->inv_no)
+                        ->where('created_at', '<', $inv->created_at)
+                        ->orderByDesc('created_at')
+                        ->first();
+                    if ($prev) {
+                        return $hasPurchaseOfficeLog($prev);
+                    }
+                    return false;
+                };
+                return $hasPurchaseOfficeLog($invoice);
+            })->values();
+        }
+
         // 3️⃣ Mark entries with displayYesNo, inv_found & approvedYesNo
         $latestInvoices = $latestInvoices->map(function ($invoice) use ($role, $invNoCounts, $userId) {
 
@@ -79,7 +107,7 @@ class InvoiceController extends Controller
                 $lastRtRole = $rtRole[count($rtRole) - 1];
             }
 
-            if ($invoice->status === 'corrected' && count($rtRole) > 0) {
+            if ($invoice->status === 'correcreturnted' && count($rtRole) > 0) {
                 $invoice->displayYesNo = ($lastRtRole === $role);
             } else {
                 $invoice->displayYesNo = (
