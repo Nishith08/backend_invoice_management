@@ -41,14 +41,14 @@ class InvoiceController extends Controller
         // Filter invoices based on role hierarchy
         $roleHierarchy = ['admin', 'accounts_1st', 'purchase_office', 'accounts_2nd', 'accounts_3rd', 'final_accountant'];
         $loggedInRoleIndex = array_search($role, $roleHierarchy);
-
+if ($role !== 'purchase_office') {
         if ($loggedInRoleIndex !== false) {
             $latestInvoices = $latestInvoices->filter(function ($invoice) use ($loggedInRoleIndex, $roleHierarchy) {
                 $invoiceRoleIndex = array_search($invoice->current_role, $roleHierarchy);
                 return $invoiceRoleIndex !== false && $invoiceRoleIndex >= $loggedInRoleIndex;
             })->values();
         }
-
+}
         // Custom filter for purchase_office role
         if ($role === 'purchase_office') {
             $latestInvoices = $latestInvoices->filter(function ($invoice) {
